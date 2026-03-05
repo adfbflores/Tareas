@@ -1,4 +1,4 @@
-# TaskFlow — Kanban Board (Vanilla JS)
+Gestión de tareas
 
 Aplicación tipo Kanban para gestión de tareas con persistencia en LocalStorage, búsqueda, filtros y drag & drop.
 
