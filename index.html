@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tareas</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="container">
+      <h1>Flujo de tareas</h1>
+      <p class="subtitle">To-Do + Kanban con LocalStorage</p>
+    </header>
+
+    <main class="container">
+      <section class="panel">
+        <form id="taskForm" class="task-form" autocomplete="off">
+          <input
+            id="title"
+            name="title"
+            type="text"
+            placeholder="Nueva tarea..."
+            required
+            maxlength="80"
+          />
+          <select id="priority" name="priority" aria-label="Prioridad">
+            <option value="low">Baja</option>
+            <option value="medium" selected>Media</option>
+            <option value="high">Alta</option>
+          </select>
+          <button type="submit">Agregar</button>
+        </form>
+
+        <div class="toolbar">
+          <input id="search" type="search" placeholder="Buscar..." />
+          <select id="filterPriority" aria-label="Filtrar por prioridad">
+            <option value="all" selected>Todas</option>
+            <option value="low">Baja</option>
+            <option value="medium">Media</option>
+            <option value="high">Alta</option>
+          </select>
+          <button id="clearAll" class="danger" type="button">
+            Borrar todo
+          </button>
+        </div>
+      </section>
+
+      <section class="board" aria-label="Tablero Kanban">
+        <div class="column" data-status="todo">
+          <h2>Por hacer</h2>
+          <div class="dropzone" data-dropzone="todo"></div>
+        </div>
+
+        <div class="column" data-status="doing">
+          <h2>En progreso</h2>
+          <div class="dropzone" data-dropzone="doing"></div>
+        </div>
+
+        <div class="column" data-status="done">
+          <h2>Hecho</h2>
+          <div class="dropzone" data-dropzone="done"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="container footer">
+      <small>Hecho con JavaScript + LocalStorage</small>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
