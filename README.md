@@ -1,17 +1,27 @@
-# TaskFlow — Kanban Board (Vanilla JS)
+# Flujo de Tareas — Kanban Board (Vanilla JS)
 
-Aplicación tipo Kanban para gestión de tareas con persistencia en LocalStorage, búsqueda, filtros y drag & drop.
+Aplicación tipo Kanban para organizar tareas en tres columnas: por hacer, en progreso y hecho.
 
 ## Stack
-- HTML5 + CSS (Grid responsive)
+
+- HTML5
+- CSS3
 - JavaScript (ES6+)
 - LocalStorage
 
-## Features
-- Crear / editar / eliminar tareas
-- Drag & Drop entre columnas
-- Filtro por prioridad + búsqueda
-- Persistencia automática
+## Qué hace
 
-## Ejecutar
-Abrir `index.html` (o Live Server).
+- Crear tareas
+- Editar y eliminar tareas
+- Arrastrar tareas entre columnas
+- Buscar por texto
+- Filtrar por prioridad
+- Guardar automáticamente el estado en el navegador
+
+## Cómo ejecutarlo
+
+Abre `index.html` directamente en el navegador.
+
+## Nota
+
+Si quieres borrar todo, usa el botón **Borrar todas**. Los cambios se guardan de forma automática.

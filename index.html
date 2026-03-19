@@ -3,68 +3,107 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tareas</title>
+    <title>Flujo de Tareas</title>
+    <meta
+      name="description"
+      content="Tablero Kanban simple para organizar tareas con búsqueda, filtros y guardado local."
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="container">
       <h1>Flujo de tareas</h1>
-      <p class="subtitle">To-Do + Kanban con LocalStorage</p>
+      <p class="subtitle">
+        Un tablero simple para organizar tareas sin complicarte.
+      </p>
     </header>
 
     <main class="container">
-      <section class="panel">
+      <section class="panel" aria-labelledby="form-title">
+        <h2 id="form-title" class="sr-only">Formulario para crear tareas</h2>
+
         <form id="taskForm" class="task-form" autocomplete="off">
+          <label class="sr-only" for="title">Nombre de la tarea</label>
           <input
             id="title"
             name="title"
             type="text"
-            placeholder="Nueva tarea..."
+            placeholder="Escribe una tarea nueva..."
             required
             maxlength="80"
           />
-          <select id="priority" name="priority" aria-label="Prioridad">
+
+          <label class="sr-only" for="priority">Prioridad</label>
+          <select id="priority" name="priority">
             <option value="low">Baja</option>
             <option value="medium" selected>Media</option>
             <option value="high">Alta</option>
           </select>
-          <button type="submit">Agregar</button>
+
+          <button type="submit">Agregar tarea</button>
         </form>
 
         <div class="toolbar">
-          <input id="search" type="search" placeholder="Buscar..." />
-          <select id="filterPriority" aria-label="Filtrar por prioridad">
-            <option value="all" selected>Todas</option>
-            <option value="low">Baja</option>
-            <option value="medium">Media</option>
-            <option value="high">Alta</option>
+          <label class="sr-only" for="search">Buscar tarea</label>
+          <input id="search" type="search" placeholder="Buscar por texto..." />
+
+          <label class="sr-only" for="filterPriority"
+            >Filtrar por prioridad</label
+          >
+          <select id="filterPriority">
+            <option value="all" selected>Todas las prioridades</option>
+            <option value="low">Solo baja</option>
+            <option value="medium">Solo media</option>
+            <option value="high">Solo alta</option>
           </select>
+
           <button id="clearAll" class="danger" type="button">
-            Borrar todo
+            Borrar todas
           </button>
         </div>
       </section>
 
       <section class="board" aria-label="Tablero Kanban">
         <div class="column" data-status="todo">
-          <h2>Por hacer</h2>
-          <div class="dropzone" data-dropzone="todo"></div>
+          <div class="column-head">
+            <h2>Por hacer</h2>
+            <span class="column-count" data-count="todo">0</span>
+          </div>
+          <div
+            class="dropzone"
+            data-dropzone="todo"
+            aria-label="Columna por hacer"
+          ></div>
         </div>
 
         <div class="column" data-status="doing">
-          <h2>En progreso</h2>
-          <div class="dropzone" data-dropzone="doing"></div>
+          <div class="column-head">
+            <h2>En progreso</h2>
+            <span class="column-count" data-count="doing">0</span>
+          </div>
+          <div
+            class="dropzone"
+            data-dropzone="doing"
+            aria-label="Columna en progreso"
+          ></div>
         </div>
 
         <div class="column" data-status="done">
-          <h2>Hecho</h2>
-          <div class="dropzone" data-dropzone="done"></div>
+          <div class="column-head">
+            <h2>Hecho</h2>
+            <span class="column-count" data-count="done">0</span>
+          </div>
+          <div
+            class="dropzone"
+            data-dropzone="done"
+            aria-label="Columna terminado"
+          ></div>
         </div>
       </section>
     </main>
 
     <footer class="container footer">
-      <small>Hecho con JavaScript + LocalStorage</small>
+      <small>Hecho con JavaScript y LocalStorage.</small>
     </footer>
 
     <script src="app.js"></script>

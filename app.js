@@ -2,10 +2,9 @@
   "use strict";
 
   /**
-   * TaskFlow — Kanban simple con LocalStorage
-   * - CRUD de tareas
-   * - Drag & drop entre columnas
-   * - Búsqueda y filtro por prioridad
+   * TaskFlow
+   * Un tablero Kanban bien sencillo para organizar tareas sin depender de librerías.
+   * Todo se guarda en LocalStorage para que no se pierda al recargar la página.
    */
 
   /**
@@ -15,133 +14,247 @@
    */
 
   const STORAGE_KEY = "taskflow.tasks.v1";
+  const VALID_STATUS = new Set(["todo", "doing", "done"]);
+  const VALID_PRIORITY = new Set(["low", "medium", "high"]);
 
-  // --- DOM ---
-  const taskForm = document.querySelector("#taskForm");
-  const titleInput = document.querySelector("#title");
-  const prioritySelect = document.querySelector("#priority");
-  const searchInput = document.querySelector("#search");
-  const filterPriority = document.querySelector("#filterPriority");
-  const clearAllBtn = document.querySelector("#clearAll");
-
-  const dropzones = {
-    todo: document.querySelector('[data-dropzone="todo"]'),
-    doing: document.querySelector('[data-dropzone="doing"]'),
-    done: document.querySelector('[data-dropzone="done"]'),
+  // Primero armamos el mapa del DOM. Si algo clave falta, es mejor detener aquí
+  // y dejar un error claro en consola en vez de romper más adelante sin contexto.
+  const elements = {
+    taskForm: document.querySelector("#taskForm"),
+    titleInput: document.querySelector("#title"),
+    prioritySelect: document.querySelector("#priority"),
+    searchInput: document.querySelector("#search"),
+    filterPriority: document.querySelector("#filterPriority"),
+    clearAllBtn: document.querySelector("#clearAll"),
+    dropzones: {
+      todo: document.querySelector('[data-dropzone="todo"]'),
+      doing: document.querySelector('[data-dropzone="doing"]'),
+      done: document.querySelector('[data-dropzone="done"]'),
+    },
+    counters: {
+      todo: document.querySelector('[data-count="todo"]'),
+      doing: document.querySelector('[data-count="doing"]'),
+      done: document.querySelector('[data-count="done"]'),
+    },
   };
+
+  if (!isDomReady(elements)) {
+    console.error(
+      "TaskFlow: faltan elementos obligatorios en el HTML. Revisa la estructura antes de inicializar la app.",
+    );
+    return;
+  }
+
+  const {
+    taskForm,
+    titleInput,
+    prioritySelect,
+    searchInput,
+    filterPriority,
+    clearAllBtn,
+    dropzones,
+    counters,
+  } = elements;
 
   /** @type {Task[]} */
   let tasks = loadTasks();
 
-  // Init
+  const dragDepth = new WeakMap();
+
+  bindEvents();
   render();
 
-  // --- Events ---
-  taskForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const title = titleInput.value.trim();
-    const priority = /** @type {Priority} */ (prioritySelect.value);
-    if (!title) return;
+  function bindEvents() {
+    taskForm.addEventListener("submit", (event) => {
+      event.preventDefault();
 
-    addTask({ title, priority });
-    taskForm.reset();
-    titleInput.focus();
-  });
+      const title = titleInput.value.trim();
+      const priority = normalizePriority(prioritySelect.value);
 
-  searchInput.addEventListener("input", render);
-  filterPriority.addEventListener("change", render);
+      if (!title) {
+        titleInput.focus();
+        return;
+      }
 
-  clearAllBtn.addEventListener("click", () => {
-    const ok = confirm("¿Borrar todas las tareas? Esta acción no se puede deshacer.");
-    if (!ok) return;
-    tasks = [];
-    saveTasks(tasks);
-    render();
-  });
-
-  // Drag & drop
-  Object.entries(dropzones).forEach(([status, zone]) => {
-    zone.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      zone.classList.add("is-over");
+      addTask({ title, priority });
+      taskForm.reset();
+      prioritySelect.value = "medium";
+      titleInput.focus();
     });
-    zone.addEventListener("dragleave", () => zone.classList.remove("is-over"));
-    zone.addEventListener("drop", (e) => {
-      e.preventDefault();
-      zone.classList.remove("is-over");
 
-      const taskId = e.dataTransfer?.getData("text/task-id");
-      if (!taskId) return;
+    searchInput.addEventListener("input", render);
+    filterPriority.addEventListener("change", render);
 
-      moveTask(taskId, /** @type {Status} */ (status));
+    clearAllBtn.addEventListener("click", () => {
+      if (tasks.length === 0) return;
+
+      const ok = confirm(
+        "¿Seguro que quieres borrar todas las tareas? Esta acción no se puede deshacer.",
+      );
+      if (!ok) return;
+
+      tasks = [];
+      persistTasks();
+      render();
+      titleInput.focus();
     });
-  });
 
-  // --- CRUD ---
+    Object.entries(dropzones).forEach(([status, zone]) => {
+      dragDepth.set(zone, 0);
+
+      zone.addEventListener("dragenter", (event) => {
+        event.preventDefault();
+        const nextDepth = (dragDepth.get(zone) ?? 0) + 1;
+        dragDepth.set(zone, nextDepth);
+        zone.classList.add("is-over");
+      });
+
+      zone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      });
+
+      zone.addEventListener("dragleave", () => {
+        const nextDepth = Math.max((dragDepth.get(zone) ?? 1) - 1, 0);
+        dragDepth.set(zone, nextDepth);
+
+        if (nextDepth === 0) {
+          zone.classList.remove("is-over");
+        }
+      });
+
+      zone.addEventListener("drop", (event) => {
+        event.preventDefault();
+        resetDropzoneState(zone);
+
+        const taskId = event.dataTransfer?.getData("text/task-id");
+        if (!taskId) return;
+
+        moveTask(taskId, /** @type {Status} */ (status));
+      });
+    });
+  }
+
   function addTask(input) {
     /** @type {Task} */
     const newTask = {
-      id: crypto.randomUUID(),
-      title: input.title,
-      priority: input.priority,
+      id: createId(),
+      title: input.title.trim(),
+      priority: normalizePriority(input.priority),
       status: "todo",
       createdAt: Date.now(),
     };
 
     tasks = [newTask, ...tasks];
-    saveTasks(tasks);
+    persistTasks();
     render();
   }
 
   function deleteTask(id) {
-    tasks = tasks.filter((t) => t.id !== id);
-    saveTasks(tasks);
+    const task = tasks.find((item) => item.id === id);
+    if (!task) return;
+
+    const ok = confirm(`¿Eliminar la tarea “${task.title}”?`);
+    if (!ok) return;
+
+    tasks = tasks.filter((item) => item.id !== id);
+    persistTasks();
     render();
   }
 
   function editTaskTitle(id, nextTitle) {
     const cleaned = nextTitle.trim();
     if (!cleaned) return;
-    tasks = tasks.map((t) => (t.id === id ? { ...t, title: cleaned } : t));
-    saveTasks(tasks);
+
+    let changed = false;
+
+    tasks = tasks.map((task) => {
+      if (task.id !== id) return task;
+      changed = task.title !== cleaned;
+      return { ...task, title: cleaned };
+    });
+
+    if (!changed) return;
+
+    persistTasks();
     render();
   }
 
   function moveTask(id, nextStatus) {
-    tasks = tasks.map((t) => (t.id === id ? { ...t, status: nextStatus } : t));
-    saveTasks(tasks);
+    if (!VALID_STATUS.has(nextStatus)) return;
+
+    let changed = false;
+
+    tasks = tasks.map((task) => {
+      if (task.id !== id) return task;
+      if (task.status === nextStatus) return task;
+      changed = true;
+      return { ...task, status: nextStatus };
+    });
+
+    if (!changed) return;
+
+    persistTasks();
     render();
   }
 
-  // --- Render ---
   function render() {
-    Object.values(dropzones).forEach((z) => (z.innerHTML = ""));
+    clearBoard();
 
-    const q = searchInput.value.trim().toLowerCase();
+    const query = searchInput.value.trim().toLowerCase();
     const priorityFilter = filterPriority.value;
 
-    const visible = tasks.filter((t) => {
-      const matchesQuery = !q || t.title.toLowerCase().includes(q);
-      const matchesPriority = priorityFilter === "all" || t.priority === priorityFilter;
+    const visibleTasks = tasks.filter((task) => {
+      const matchesQuery = !query || task.title.toLowerCase().includes(query);
+      const matchesPriority =
+        priorityFilter === "all" || task.priority === priorityFilter;
       return matchesQuery && matchesPriority;
     });
 
-    const byStatus = groupBy(visible, (t) => t.status);
+    const byStatus = groupBy(visibleTasks, (task) => task.status);
 
-    (byStatus.todo ?? []).forEach((t) => dropzones.todo.appendChild(taskCard(t)));
-    (byStatus.doing ?? []).forEach((t) => dropzones.doing.appendChild(taskCard(t)));
-    (byStatus.done ?? []).forEach((t) => dropzones.done.appendChild(taskCard(t)));
+    renderColumn("todo", byStatus.todo ?? []);
+    renderColumn("doing", byStatus.doing ?? []);
+    renderColumn("done", byStatus.done ?? []);
+
+    counters.todo.textContent = String((byStatus.todo ?? []).length);
+    counters.doing.textContent = String((byStatus.doing ?? []).length);
+    counters.done.textContent = String((byStatus.done ?? []).length);
+
+    clearAllBtn.disabled = tasks.length === 0;
+  }
+
+  function renderColumn(status, items) {
+    const zone = dropzones[status];
+
+    if (items.length === 0) {
+      zone.appendChild(createEmptyState(status));
+      return;
+    }
+
+    items.forEach((task) => zone.appendChild(taskCard(task)));
   }
 
   function taskCard(task) {
     const el = document.createElement("article");
-    el.className = "card";
+    el.className = "task-card";
     el.draggable = true;
     el.dataset.id = task.id;
+    el.tabIndex = 0;
+    el.setAttribute("aria-label", `Tarea: ${task.title}`);
 
-    el.addEventListener("dragstart", (e) => {
-      e.dataTransfer?.setData("text/task-id", task.id);
-      e.dataTransfer?.setData("text/plain", task.id);
+    el.addEventListener("dragstart", (event) => {
+      el.classList.add("is-dragging");
+      event.dataTransfer?.setData("text/task-id", task.id);
+      event.dataTransfer?.setData("text/plain", task.id);
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+      }
+    });
+
+    el.addEventListener("dragend", () => {
+      el.classList.remove("is-dragging");
+      Object.values(dropzones).forEach(resetDropzoneState);
     });
 
     const badgeLabel = priorityLabel(task.priority);
@@ -150,48 +263,155 @@
       <div class="card-top">
         <span class="badge ${task.priority}">${badgeLabel}</span>
         <div class="card-actions">
-          <button class="icon-btn" data-action="edit" aria-label="Editar">✏️</button>
-          <button class="icon-btn" data-action="delete" aria-label="Eliminar">🗑️</button>
+          <button class="icon-btn" type="button" data-action="edit" aria-label="Editar tarea">✏️</button>
+          <button class="icon-btn" type="button" data-action="delete" aria-label="Eliminar tarea">🗑️</button>
         </div>
       </div>
       <p class="card-title"></p>
+      <p class="card-meta">Creada ${formatDate(task.createdAt)}</p>
     `;
 
     el.querySelector(".card-title").textContent = task.title;
 
-    el.addEventListener("click", (e) => {
-      const btn = e.target.closest("button[data-action]");
+    el.addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-action]");
       if (!btn) return;
-      const action = btn.dataset.action;
+      handleCardAction(task, btn.dataset.action);
+    });
 
-      if (action === "delete") return deleteTask(task.id);
-      if (action === "edit") {
-        const next = prompt("Editar tarea:", task.title);
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const next = prompt("Cambia el texto de la tarea:", task.title);
         if (next === null) return;
         editTaskTitle(task.id, next);
+      }
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteTask(task.id);
       }
     });
 
     return el;
   }
 
-  // --- Storage ---
+  function handleCardAction(task, action) {
+    if (action === "delete") {
+      deleteTask(task.id);
+      return;
+    }
+
+    if (action === "edit") {
+      const next = prompt("Cambia el texto de la tarea:", task.title);
+      if (next === null) return;
+      editTaskTitle(task.id, next);
+    }
+  }
+
+  function createEmptyState(status) {
+    const messages = {
+      todo: "Aquí caerán las tareas pendientes.",
+      doing: "Cuando arrastres algo en curso, aparecerá aquí.",
+      done: "Todavía no hay tareas terminadas.",
+    };
+
+    const el = document.createElement("div");
+    el.className = "empty-state";
+    el.textContent = messages[status] ?? "No hay tareas para mostrar.";
+    return el;
+  }
+
+  function clearBoard() {
+    Object.values(dropzones).forEach((zone) => {
+      zone.innerHTML = "";
+      resetDropzoneState(zone);
+    });
+  }
+
+  function resetDropzoneState(zone) {
+    dragDepth.set(zone, 0);
+    zone.classList.remove("is-over");
+  }
+
   function loadTasks() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return [];
+
       const data = JSON.parse(raw);
-      return Array.isArray(data) ? data : [];
-    } catch {
+      if (!Array.isArray(data)) return [];
+
+      return data
+        .map(normalizeTask)
+        .filter(Boolean)
+        .sort((a, b) => b.createdAt - a.createdAt);
+    } catch (error) {
+      console.warn(
+        "TaskFlow: no se pudieron recuperar las tareas guardadas.",
+        error,
+      );
       return [];
     }
   }
 
-  function saveTasks(value) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+  function persistTasks() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    } catch (error) {
+      console.error(
+        "TaskFlow: no se pudo guardar el estado en LocalStorage.",
+        error,
+      );
+      alert(
+        "No se pudieron guardar los cambios. Revisa si el navegador bloqueó el almacenamiento local.",
+      );
+    }
   }
 
-  // --- Utils ---
+  function normalizeTask(task) {
+    if (!task || typeof task !== "object") return null;
+
+    const title = typeof task.title === "string" ? task.title.trim() : "";
+    const priority = normalizePriority(task.priority);
+    const status = VALID_STATUS.has(task.status) ? task.status : "todo";
+    const createdAt = Number.isFinite(task.createdAt)
+      ? task.createdAt
+      : Date.now();
+    const id =
+      typeof task.id === "string" && task.id.trim() ? task.id : createId();
+
+    if (!title) return null;
+
+    return { id, title, priority, status, createdAt };
+  }
+
+  function normalizePriority(value) {
+    return VALID_PRIORITY.has(value) ? value : "medium";
+  }
+
+  function createId() {
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
+      return crypto.randomUUID();
+    }
+
+    return `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function formatDate(timestamp) {
+    try {
+      return new Intl.DateTimeFormat("es", {
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(timestamp);
+    } catch {
+      return new Date(timestamp).toLocaleString("es");
+    }
+  }
+
   function groupBy(items, keyFn) {
     return items.reduce((acc, item) => {
       const key = String(keyFn(item));
@@ -200,7 +420,28 @@
     }, {});
   }
 
-  function priorityLabel(p) {
-    return p === "high" ? "Alta" : p === "medium" ? "Media" : "Baja";
+  function priorityLabel(priority) {
+    if (priority === "high") return "Alta";
+    if (priority === "medium") return "Media";
+    return "Baja";
+  }
+
+  function isDomReady(refs) {
+    const required = [
+      refs.taskForm,
+      refs.titleInput,
+      refs.prioritySelect,
+      refs.searchInput,
+      refs.filterPriority,
+      refs.clearAllBtn,
+      refs.dropzones.todo,
+      refs.dropzones.doing,
+      refs.dropzones.done,
+      refs.counters.todo,
+      refs.counters.doing,
+      refs.counters.done,
+    ];
+
+    return required.every(Boolean);
   }
 })();
